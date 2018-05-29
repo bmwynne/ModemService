@@ -12,5 +12,4 @@
 void cell_tick();
 int test_cell();
 
-mdm_cmd_t curr_cmd = NULL;
 #endif
