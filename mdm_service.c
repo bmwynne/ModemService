@@ -1,4 +1,7 @@
 #include "mdm_service.h"
+#include "cellular.h"
+#include "gps.h"
+#include "power.h"
 
 void mdm_config(void);
 void mdm_start(void) {

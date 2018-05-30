@@ -8,9 +8,6 @@
 #ifndef MDM_SERVICE
 #define MDM_SERVICE
 
-#include "cellular.h"
-#include "gps.h"
-#include "power.h"
 #include "mdm_util.h"
 
 
