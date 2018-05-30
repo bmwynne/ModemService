@@ -1,3 +1,6 @@
 # Ignore the generated files
 libmodem*
 *.o
+
+# Ignore DS_store
+.DS_store
