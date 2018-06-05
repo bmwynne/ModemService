@@ -7,8 +7,6 @@
 #ifndef PWR_H
 #define PWR_H
 
-#include "mdm_util.h"
-
 void power_tick();
 int test_power();
 #endif

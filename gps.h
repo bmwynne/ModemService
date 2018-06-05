@@ -7,8 +7,6 @@
 #ifndef GPS_H
 #define GPS_H
 
-#include "mdm_util.h"
-
 void gps_tick();
 int test_gps();
 #endif

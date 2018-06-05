@@ -7,7 +7,6 @@
 #ifndef CELL_H
 #define CELL_H
 
-#include "mdm_util.h"
 
 void cell_tick();
 int test_cell();
