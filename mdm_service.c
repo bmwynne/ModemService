@@ -3,32 +3,63 @@
 #include "gps.h"
 #include "power.h"
 #include <string.h>
+#include <stdio.h>
 
-// Modem AT Command definitions
-#define AT_OK       "AT\r"
-#define AT_ECHO_OFF "ATE0\r"
-#define AT_ECHO_ON  "ATE1\r"
-#define AT_SELINT   "AT#SELINT=2\r"
-#define AT_CMGF     "AT+CMGF=1\r"
-#define AT_CGDCONT  "AT+CGDCONT=1,\"IP\",\"a105.2way.net\"\r"
-#define AT_SKIPESC  "AT#SKIPESC=1\r"
-#define AT_CMEE     "AT+CMEE=2\r"
-#define AT_SGACT    "AT#SGACT=1,1\r"
+uint8_t test_int = 0;
+#define CTRL_Z 26
 
 #define MAX_BUF_SIZE 128
-char dataBuff[MAX_BUF_SIZE];
+char data_read_buff[MAX_BUF_SIZE];
 uint8_t bytes_read = 0;
+
+char send_data_buff[MAX_BUF_SIZE];
 
 enum cmd_status curr_status; 
 mdm_cb_t curr_cb;
-char** curr_cmds;
+at_cmd_t* curr_cmds;
 int cmd_idx = 0;
 int num_cmds = 0;
 
-uint8_t test_int = 0;
+
+// Modem AT Command definitions
+void at_ok() { 
+    char* cmd = "AT\r";
+    mdm_write(cmd, strlen(cmd)); 
+}
+void at_echo_off() { 
+    char* cmd = "ATE0\r";
+    mdm_write(cmd, strlen(cmd)); 
+}
+void at_cgdcont() { 
+    char* fmt = "AT+CGDCONT=%c,\"%s\",\"%s\"\r";
+    char s[64];
+    sprintf(s, fmt, '1', "IP", mdm_cfg.APN);
+    mdm_write(s, strlen(s));
+}
+void at_sgact() {
+    char* cmd = "AT#SGACT=1,1\r";
+    mdm_write(cmd, strlen(cmd)); 
+}
+void at_sd() {
+    char* fmt = "AT#SD=1,%d,%d,\"%s\",0,1,1\r";
+    char s[64];
+    sprintf(s, fmt, mdm_sckt.mode, mdm_sckt.port, mdm_sckt.IP);
+    mdm_write(s, strlen(s));
+}
+void at_ssend() {
+    char* cmd = "AT#SSEND=1\r";
+    mdm_write(cmd, strlen(cmd));
+}
+void socket_send() {
+    char* fmt = "%s%c";
+    char s[MAX_BUF_SIZE+1];
+    sprintf(s, fmt, send_data_buff, CTRL_Z);
+    mdm_write(s, strlen(s));
+}
+
 
 // Init commands
-char* init_cmds[] = { AT_ECHO_OFF, AT_CGDCONT, AT_SGACT };
+at_cmd_t init_cmds[3] = {at_echo_off, at_cgdcont, at_sgact};
 void mdm_init(mdm_cb_t init_cb) {
     curr_cb = init_cb;
     curr_cmds = init_cmds;
@@ -36,33 +67,54 @@ void mdm_init(mdm_cb_t init_cb) {
     curr_status = AT_IDLE;
 }
 
-void mdm_open(mdm_socket_t * socket, mdm_cb_t received_cb);
-void mdm_send(mdm_socket_t * socket, unsigned char * data, int data_len, mdm_cb_t send_cb);
-void mdm_close(mdm_socket_t * socket, mdm_cb_t close_cb);
-void mdm_status(mdm_socket_t * socket, mdm_cb_t status_cb);
+at_cmd_t open_cmds[1] = {at_sd};
+void mdm_open(mdm_socket_t socket, mdm_cb_t open_cb) {
+    curr_cb = open_cb;
+    mdm_sckt = socket;
+    curr_cmds = open_cmds;
+    num_cmds = 1;
+    curr_status = AT_IDLE;
+}
+
+at_cmd_t send_cmds[2] = {at_ssend, socket_send};
+void mdm_send(mdm_socket_t socket, char * data, int data_len, mdm_cb_t send_cb) {
+    strncpy(send_data_buff, data, data_len);
+    mdm_sckt = socket;
+    curr_cb = send_cb;
+    curr_cmds = send_cmds;
+    num_cmds = 2;
+    curr_status = AT_IDLE;
+}
+void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb);
+void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb);
 void mdm_loc_config(mdm_loc_config_t * config, mdm_cb_t loc_config_cb);
 void mdm_loc_start(mdm_cb_t loc_cb);
 void mdm_loc_stop(mdm_cb_t loc_cb);
 
 uint8_t mdm_tick() {
+    test_int += 1;
     // Main state loop, handle any active command set if there is one, calls the approriate call back on ERROR or FINISHED
     switch (curr_status) {
         case AT_INACTIVE:
             break;
             
         case AT_IDLE:
-            test_int = mdm_write(curr_cmds[cmd_idx], strlen(curr_cmds[cmd_idx]));
+            curr_cmds[cmd_idx]();
             curr_status = AT_PENDING;
 
         case AT_PENDING:
-            bytes_read += mdm_read(dataBuff, MAX_BUF_SIZE);
-            if(strstr(dataBuff, "OK")) { 
+            bytes_read += mdm_read(data_read_buff, MAX_BUF_SIZE);
+            if(strstr(data_read_buff, "OK")) { 
                 curr_status = AT_SUCCESS;
-                memset(dataBuff, 0, MAX_BUF_SIZE);
+                memset(data_read_buff, 0, MAX_BUF_SIZE);
             }
-            if(strstr(dataBuff, "ERROR")) { 
+            if(strstr(data_read_buff, "ERROR")) { 
                 curr_status = AT_ERROR;
-                memset(dataBuff, 0, MAX_BUF_SIZE);
+                memset(data_read_buff, 0, MAX_BUF_SIZE);
+            }
+            if(strstr(data_read_buff, ">") && curr_cmds[cmd_idx] == at_ssend) { 
+                curr_status = AT_SUCCESS;
+                memset(data_read_buff, 0, MAX_BUF_SIZE);
             }
             break;
 
@@ -97,7 +149,6 @@ int test_func() {
 #include <termios.h>
 
 int uart_fd;
-mdm_config_t mdm_cfg;
 
 int config_serial(char* port) {
     int file_desc;

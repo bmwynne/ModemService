@@ -10,6 +10,9 @@
 
 #include <stdint.h>
 
+#define MDM_SOCKET_MODE_UDP 1
+#define MDM_SOCKET_MODE_TCP 0
+
 #define OSX 1
 
 #ifdef OSX
@@ -22,6 +25,9 @@ int mdm_read(char* data_buf, int data_len);
 // Callback definition
 typedef void (*mdm_cb_t)(uint8_t event, void * object);
 
+// AT Command function type
+typedef void (*at_cmd_t)(void);
+
 // Modem function pointer type
 typedef struct {
     mdm_cb_t* cb_func;
@@ -32,7 +38,6 @@ typedef struct {
 // Modem configuration type
 typedef struct {
     char APN[70];
-    char IP[16];
 } mdm_config_t;
 
 // AT Command States
@@ -48,7 +53,7 @@ enum cmd_status {
 
 
 typedef struct {
-    char ip[15];	// 000.000.000.000
+    char IP[15];	// 000.000.000.000
     int port;	// 10700
     char mode;
     int connection_id;
@@ -90,6 +95,8 @@ typedef struct {
 // Speed_Knots
 // Date_of_Fix
 // Num_Satellites
+mdm_config_t mdm_cfg;
+mdm_socket_t mdm_sckt;
 
 #ifdef OSX
 void mdm_config(mdm_config_t cfg, char* port);
@@ -100,10 +107,10 @@ void mdm_config(void);
 void mdm_start(void);
 void mdm_stop(void);
 void mdm_init(mdm_cb_t init_cb);
-void mdm_open(mdm_socket_t * socket, mdm_cb_t received_cb);
-void mdm_send(mdm_socket_t * socket, unsigned char * data, int data_len, mdm_cb_t send_cb);
-void mdm_close(mdm_socket_t * socket, mdm_cb_t close_cb);
-void mdm_status(mdm_socket_t * socket, mdm_cb_t status_cb);
+void mdm_open(mdm_socket_t socket, mdm_cb_t open_cb);
+void mdm_send(mdm_socket_t socket, char * data, int data_len, mdm_cb_t send_cb);
+void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb);
+void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb);
 void mdm_loc_config(mdm_loc_config_t * config, mdm_cb_t loc_config_cb);
 void mdm_loc_start(mdm_cb_t loc_cb);
 void mdm_loc_stop(mdm_cb_t loc_cb);
