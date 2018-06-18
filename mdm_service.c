@@ -57,6 +57,11 @@ void socket_send() {
     mdm_write(s, strlen(s));
 }
 
+void at_sh() {
+    char* cmd = "AT#SH=1\r";
+    mdm_write(cmd, strlen(cmd));
+}
+
 
 // Init commands
 at_cmd_t init_cmds[3] = {at_echo_off, at_cgdcont, at_sgact};
@@ -85,7 +90,16 @@ void mdm_send(mdm_socket_t socket, char * data, int data_len, mdm_cb_t send_cb) 
     num_cmds = 2;
     curr_status = AT_IDLE;
 }
-void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb);
+
+at_cmd_t close_cmds[1] = {at_sh};
+void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb) {
+    curr_cb = close_cb;
+    mdm_sckt = socket;
+    curr_cmds = close_cmds;
+    num_cmds = 1;
+    curr_status = AT_IDLE;
+}
+
 void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb);
 void mdm_loc_config(mdm_loc_config_t * config, mdm_cb_t loc_config_cb);
 void mdm_loc_start(mdm_cb_t loc_cb);
