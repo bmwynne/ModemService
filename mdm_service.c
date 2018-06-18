@@ -7,13 +7,29 @@
 
 uint8_t test_int = 0;
 #define CTRL_Z 26
-
 #define MAX_BUF_SIZE 128
+#define SI_FMT "%d,%d,%d,%d,%d"
+#define SS_FMT "%d,%d,%[^,],%d,%[^,],%d"
+
+typedef struct {
+    char bound_ip[15];
+    int bound_port;
+    char conn_ip[15];
+    int conn_port;
+    int sent_bytes;
+    int rcvd_bytes;
+    uint8_t state;
+} socket_status;
+
+// UART Data buffer
 char data_read_buff[MAX_BUF_SIZE];
 uint8_t bytes_read = 0;
 
+// Data buffer for socket send
 char send_data_buff[MAX_BUF_SIZE];
+socket_status sckt_status;
 
+// State variables for tick process
 enum cmd_status curr_status; 
 mdm_cb_t curr_cb;
 at_cmd_t* curr_cmds;
@@ -28,6 +44,10 @@ void at_ok() {
 }
 void at_echo_off() { 
     char* cmd = "ATE0\r";
+    mdm_write(cmd, strlen(cmd)); 
+}
+void at_cmee() {
+    char* cmd = "AT+CMEE=2\r";
     mdm_write(cmd, strlen(cmd)); 
 }
 void at_cgdcont() { 
@@ -56,14 +76,22 @@ void socket_send() {
     sprintf(s, fmt, send_data_buff, CTRL_Z);
     mdm_write(s, strlen(s));
 }
+void at_ss() {
+    char* cmd = "AT#SS=1\r";
+    mdm_write(cmd, strlen(cmd));
+}
+void at_si() {
+    char* cmd = "AT#SI=1\r";
+    mdm_write(cmd, strlen(cmd));
+}
 
 
 // Init commands
-at_cmd_t init_cmds[3] = {at_echo_off, at_cgdcont, at_sgact};
+at_cmd_t init_cmds[4] = {at_echo_off, at_cmee, at_cgdcont, at_sgact};
 void mdm_init(mdm_cb_t init_cb) {
     curr_cb = init_cb;
     curr_cmds = init_cmds;
-    num_cmds = 3;
+    num_cmds = 4;
     curr_status = AT_IDLE;
 }
 
@@ -86,7 +114,14 @@ void mdm_send(mdm_socket_t socket, char * data, int data_len, mdm_cb_t send_cb) 
     curr_status = AT_IDLE;
 }
 void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb);
-void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb);
+at_cmd_t status_cmds[2] = {at_ss, at_si};
+void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb) {
+    curr_cb = status_cb;
+    mdm_sckt = socket;
+    curr_cmds = open_cmds;
+    num_cmds = 1;
+    curr_status = AT_IDLE;
+}
 void mdm_loc_config(mdm_loc_config_t * config, mdm_cb_t loc_config_cb);
 void mdm_loc_start(mdm_cb_t loc_cb);
 void mdm_loc_stop(mdm_cb_t loc_cb);
