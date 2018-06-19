@@ -83,6 +83,19 @@ typedef struct {
     double longitude;
 } mdm_loc_result_t;
 
+typedef struct {
+    int sock_id;
+    char bound_ip[15];
+    int bound_port;
+    char conn_ip[15];
+    int conn_port;
+    int sent_bytes;
+    int sent_pnding;
+    int rcvd_bytes;
+    int rcvd_pnding;
+    int state;
+} socket_status;
+
 // // 
 // Utc_Time
 // Latitude

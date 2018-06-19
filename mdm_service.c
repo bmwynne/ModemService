@@ -11,16 +11,6 @@ uint8_t test_int = 0;
 #define SI_FMT "%d,%d,%d,%d,%d"
 #define SS_FMT "%d,%d,%[^,],%d,%[^,],%d"
 
-typedef struct {
-    char bound_ip[15];
-    int bound_port;
-    char conn_ip[15];
-    int conn_port;
-    int sent_bytes;
-    int rcvd_bytes;
-    uint8_t state;
-} socket_status;
-
 // UART Data buffer
 char data_read_buff[MAX_BUF_SIZE];
 uint8_t bytes_read = 0;
@@ -28,6 +18,7 @@ uint8_t bytes_read = 0;
 // Data buffer for socket send
 char send_data_buff[MAX_BUF_SIZE];
 socket_status sckt_status;
+void * return_data = NULL;
 
 // State variables for tick process
 enum cmd_status curr_status; 
@@ -35,6 +26,7 @@ mdm_cb_t curr_cb;
 at_cmd_t* curr_cmds;
 int cmd_idx = 0;
 int num_cmds = 0;
+
 
 
 // Modem AT Command definitions
@@ -92,6 +84,7 @@ void mdm_init(mdm_cb_t init_cb) {
     curr_cb = init_cb;
     curr_cmds = init_cmds;
     num_cmds = 4;
+    return_data = NULL;
     curr_status = AT_IDLE;
 }
 
@@ -101,6 +94,7 @@ void mdm_open(mdm_socket_t socket, mdm_cb_t open_cb) {
     mdm_sckt = socket;
     curr_cmds = open_cmds;
     num_cmds = 1;
+    return_data = NULL;
     curr_status = AT_IDLE;
 }
 
@@ -111,15 +105,18 @@ void mdm_send(mdm_socket_t socket, char * data, int data_len, mdm_cb_t send_cb) 
     curr_cb = send_cb;
     curr_cmds = send_cmds;
     num_cmds = 2;
+    return_data = NULL;
     curr_status = AT_IDLE;
 }
 void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb);
+
 at_cmd_t status_cmds[2] = {at_ss, at_si};
 void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb) {
     curr_cb = status_cb;
     mdm_sckt = socket;
     curr_cmds = open_cmds;
     num_cmds = 1;
+    return_data = &sckt_status;
     curr_status = AT_IDLE;
 }
 void mdm_loc_config(mdm_loc_config_t * config, mdm_cb_t loc_config_cb);
@@ -139,7 +136,25 @@ uint8_t mdm_tick() {
 
         case AT_PENDING:
             bytes_read += mdm_read(data_read_buff, MAX_BUF_SIZE);
-            if(strstr(data_read_buff, "OK")) { 
+            if(strstr(data_read_buff, "OK")) {
+                if(curr_cmds[cmd_idx] == at_ss) {
+                    printf("Debug 1: %s", strstr(data_read_buff, "#SS: "));
+                    sscanf(strstr(data_read_buff, "#SS: "), SS_FMT, 
+                    &(sckt_status.sock_id), 
+                    &(sckt_status.state), 
+                    sckt_status.bound_ip, 
+                    &(sckt_status.bound_port), 
+                    sckt_status.conn_ip, 
+                    &(sckt_status.conn_port));
+                }
+                if (curr_cmds[cmd_idx] == at_si) {
+                    sscanf(strstr(data_read_buff, "#SI: "), SS_FMT, 
+                    &(sckt_status.sock_id), 
+                    &(sckt_status.sent_bytes), 
+                    &(sckt_status.rcvd_bytes), 
+                    &(sckt_status.sent_pnding), 
+                    &(sckt_status.rcvd_pnding));
+                }
                 curr_status = AT_SUCCESS;
                 memset(data_read_buff, 0, MAX_BUF_SIZE);
             }
@@ -159,8 +174,15 @@ uint8_t mdm_tick() {
             else { curr_status = AT_IDLE; }
             break;
 
+        case AT_FINISHED:
+            (*curr_cb)(curr_status, return_data);
+            cmd_idx = 0;
+            num_cmds = 0;
+            curr_status = AT_INACTIVE;            
+            break;
+
         default:
-            (*curr_cb)(curr_status, NULL);
+            (*curr_cb)(curr_status, return_data);
             cmd_idx = 0;
             num_cmds = 0;
             curr_status = AT_INACTIVE;            
