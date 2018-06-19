@@ -7,18 +7,26 @@
 
 uint8_t test_int = 0;
 #define CTRL_Z 26
-
 #define MAX_BUF_SIZE 128
+#define SI_FMT "#SI: %d,%d,%d,%d,%d"
+#define SS_FMT "#SS: %d,%d,%[^,],%d,%[^,],%d"
+
+// UART Data buffer
 char data_read_buff[MAX_BUF_SIZE];
 uint8_t bytes_read = 0;
 
+// Data buffer for socket send
 char send_data_buff[MAX_BUF_SIZE];
+socket_status sckt_status;
+void * return_data = NULL;
 
+// State variables for tick process
 enum cmd_status curr_status; 
 mdm_cb_t curr_cb;
 at_cmd_t* curr_cmds;
 int cmd_idx = 0;
 int num_cmds = 0;
+
 
 
 // Modem AT Command definitions
@@ -28,6 +36,10 @@ void at_ok() {
 }
 void at_echo_off() { 
     char* cmd = "ATE0\r";
+    mdm_write(cmd, strlen(cmd)); 
+}
+void at_cmee() {
+    char* cmd = "AT+CMEE=2\r";
     mdm_write(cmd, strlen(cmd)); 
 }
 void at_cgdcont() { 
@@ -56,6 +68,14 @@ void socket_send() {
     sprintf(s, fmt, send_data_buff, CTRL_Z);
     mdm_write(s, strlen(s));
 }
+void at_ss() {
+    char* cmd = "AT#SS=1\r";
+    mdm_write(cmd, strlen(cmd));
+}
+void at_si() {
+    char* cmd = "AT#SI=1\r";
+    mdm_write(cmd, strlen(cmd));
+}
 
 void at_sh() {
     char* cmd = "AT#SH=1\r";
@@ -64,11 +84,12 @@ void at_sh() {
 
 
 // Init commands
-at_cmd_t init_cmds[3] = {at_echo_off, at_cgdcont, at_sgact};
+at_cmd_t init_cmds[4] = {at_echo_off, at_cmee, at_cgdcont, at_sgact};
 void mdm_init(mdm_cb_t init_cb) {
     curr_cb = init_cb;
     curr_cmds = init_cmds;
-    num_cmds = 3;
+    num_cmds = 4;
+    return_data = NULL;
     curr_status = AT_IDLE;
 }
 
@@ -78,6 +99,7 @@ void mdm_open(mdm_socket_t socket, mdm_cb_t open_cb) {
     mdm_sckt = socket;
     curr_cmds = open_cmds;
     num_cmds = 1;
+    return_data = NULL;
     curr_status = AT_IDLE;
 }
 
@@ -88,6 +110,7 @@ void mdm_send(mdm_socket_t socket, char * data, int data_len, mdm_cb_t send_cb) 
     curr_cb = send_cb;
     curr_cmds = send_cmds;
     num_cmds = 2;
+    return_data = NULL;
     curr_status = AT_IDLE;
 }
 
@@ -100,7 +123,16 @@ void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb) {
     curr_status = AT_IDLE;
 }
 
-void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb);
+at_cmd_t status_cmds[2] = {at_ss, at_si};
+void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb) {
+    curr_cb = status_cb;
+    mdm_sckt = socket;
+    curr_cmds = status_cmds;
+    num_cmds = 2;
+    return_data = &sckt_status;
+    curr_status = AT_IDLE;
+}
+
 void mdm_loc_config(mdm_loc_config_t * config, mdm_cb_t loc_config_cb);
 void mdm_loc_start(mdm_cb_t loc_cb);
 void mdm_loc_stop(mdm_cb_t loc_cb);
@@ -118,7 +150,26 @@ uint8_t mdm_tick() {
 
         case AT_PENDING:
             bytes_read += mdm_read(data_read_buff, MAX_BUF_SIZE);
-            if(strstr(data_read_buff, "OK")) { 
+            if(strstr(data_read_buff, "OK")) {
+                if(curr_cmds[cmd_idx] == at_ss) {
+                    sscanf(strstr(data_read_buff, "#SS: "), SS_FMT, 
+                    &(sckt_status.sock_id), 
+                    &(sckt_status.state), 
+                    sckt_status.bound_ip, 
+                    &(sckt_status.bound_port), 
+                    sckt_status.conn_ip, 
+                    &(sckt_status.conn_port));
+
+                }
+                if (curr_cmds[cmd_idx] == at_si) {
+                    sscanf(strstr(data_read_buff, "#SI: "), SI_FMT, 
+                    &(sckt_status.sock_id), 
+                    &(sckt_status.sent_bytes), 
+                    &(sckt_status.rcvd_bytes), 
+                    &(sckt_status.sent_pnding), 
+                    &(sckt_status.rcvd_pnding));
+
+                }
                 curr_status = AT_SUCCESS;
                 memset(data_read_buff, 0, MAX_BUF_SIZE);
             }
@@ -138,8 +189,15 @@ uint8_t mdm_tick() {
             else { curr_status = AT_IDLE; }
             break;
 
+        case AT_FINISHED:
+            (*curr_cb)(curr_status, return_data);
+            cmd_idx = 0;
+            num_cmds = 0;
+            curr_status = AT_INACTIVE;            
+            break;
+
         default:
-            (*curr_cb)(curr_status, NULL);
+            (*curr_cb)(curr_status, return_data);
             cmd_idx = 0;
             num_cmds = 0;
             curr_status = AT_INACTIVE;            
