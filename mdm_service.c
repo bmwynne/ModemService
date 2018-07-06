@@ -8,8 +8,12 @@
 uint8_t test_int = 0;
 #define CTRL_Z 26
 #define MAX_BUF_SIZE 128
+// id, sent, rcvd, pending_in, pending_out
 #define SI_FMT "#SI: %d,%d,%d,%d,%d"
+// id, state, local IP, local port, target IP, target port
 #define SS_FMT "#SS: %d,%d,%[^,],%d,%[^,],%d"
+// id, num_bytes, data
+#define SRCV_FMT "#SRECV: %d,%d\n%[^n]"
 
 // UART Data buffer
 char data_read_buff[MAX_BUF_SIZE];
@@ -27,6 +31,14 @@ at_cmd_t* curr_cmds;
 int cmd_idx = 0;
 int num_cmds = 0;
 
+mdm_config_t mdm_cfg;
+mdm_socket_t mdm_sckt;
+
+uint8_t SRING_STATUS = 0;
+int sckt_id;
+char mdm_data_buff[MAX_BUF_SIZE];
+int rcvd_bytes_read = 0;
+int rcvd_bytes_pending = 0;
 
 
 // Modem AT Command definitions
@@ -68,6 +80,12 @@ void socket_send() {
     sprintf(s, fmt, send_data_buff, CTRL_Z);
     mdm_write(s, strlen(s));
 }
+void socket_rcv() {
+    char* fmt = "AT#SRECV=%d,%d\r";
+    char s[64];
+    sprintf(s, fmt, 1, MAX_BUF_SIZE);
+    mdm_write(s, strlen(s));
+}
 void at_ss() {
     char* cmd = "AT#SS=1\r";
     mdm_write(cmd, strlen(cmd));
@@ -81,6 +99,7 @@ void at_sh() {
     char* cmd = "AT#SH=1\r";
     mdm_write(cmd, strlen(cmd));
 }
+
 
 
 // Init commands
@@ -114,6 +133,25 @@ void mdm_send(mdm_socket_t socket, char * data, int data_len, mdm_cb_t send_cb) 
     curr_status = AT_IDLE;
 }
 
+uint8_t mdm_data_rdy() {
+    return rcvd_bytes_pending;
+}
+
+int mdm_recv(char * data, int max_data_len) {
+    if(rcvd_bytes_pending) {
+        char temp_buff[MAX_BUF_SIZE];
+        int num_to_read = rcvd_bytes_pending;
+        if (max_data_len < rcvd_bytes_pending) { num_to_read = max_data_len; }
+        memcpy(data, mdm_data_buff, num_to_read);
+        rcvd_bytes_pending -= num_to_read;
+        memcpy(temp_buff, &(mdm_data_buff[num_to_read]), rcvd_bytes_pending);
+        memset(mdm_data_buff, 0, MAX_BUF_SIZE);
+        memcpy(mdm_data_buff, temp_buff, rcvd_bytes_pending);
+        return num_to_read;
+    }
+    return 0;
+}
+
 at_cmd_t close_cmds[1] = {at_sh};
 void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb) {
     curr_cb = close_cb;
@@ -139,17 +177,37 @@ void mdm_loc_stop(mdm_cb_t loc_cb);
 
 uint8_t mdm_tick() {
     test_int += 1;
+
+    bytes_read += mdm_read(data_read_buff, MAX_BUF_SIZE);
+    if(strstr(data_read_buff, "SRING: 1")) {
+        SRING_STATUS = 1;
+    }
+
+
     // Main state loop, handle any active command set if there is one, calls the approriate call back on ERROR or FINISHED
     switch (curr_status) {
         case AT_INACTIVE:
+            if (SRING_STATUS == 1) {
+                memset(data_read_buff, 0, MAX_BUF_SIZE);
+                socket_rcv();
+                bytes_read += mdm_read(data_read_buff, MAX_BUF_SIZE);
+                sscanf(strstr(data_read_buff, "#SRECV: "), SRCV_FMT,
+                &(sckt_id),
+                &(rcvd_bytes_read),
+                &(mdm_data_buff[rcvd_bytes_pending]));
+                rcvd_bytes_pending += rcvd_bytes_read;
+                // printf("Bytes Read: %d, Bytes Pending: %d, Data: %s\r\n", rcvd_bytes_read, rcvd_bytes_pending, mdm_data_buff);
+                rcvd_bytes_read = 0;
+                SRING_STATUS = 0;
+            }
             break;
             
         case AT_IDLE:
             curr_cmds[cmd_idx]();
             curr_status = AT_PENDING;
+            break;
 
         case AT_PENDING:
-            bytes_read += mdm_read(data_read_buff, MAX_BUF_SIZE);
             if(strstr(data_read_buff, "OK")) {
                 if(curr_cmds[cmd_idx] == at_ss) {
                     sscanf(strstr(data_read_buff, "#SS: "), SS_FMT, 
