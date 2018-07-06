@@ -51,7 +51,6 @@ enum cmd_status {
     AT_FINISHED = 6
 };
 
-
 typedef struct {
     char IP[15];	// 000.000.000.000
     int port;	// 10700
@@ -108,8 +107,6 @@ typedef struct {
 // Speed_Knots
 // Date_of_Fix
 // Num_Satellites
-mdm_config_t mdm_cfg;
-mdm_socket_t mdm_sckt;
 
 #ifdef OSX
 void mdm_config(mdm_config_t cfg, char* port);
@@ -122,6 +119,8 @@ void mdm_stop(void);
 void mdm_init(mdm_cb_t init_cb);
 void mdm_open(mdm_socket_t socket, mdm_cb_t open_cb);
 void mdm_send(mdm_socket_t socket, char * data, int data_len, mdm_cb_t send_cb);
+uint8_t mdm_data_rdy();
+int mdm_recv(char * data, int max_data_len);
 void mdm_close(mdm_socket_t socket, mdm_cb_t close_cb);
 void mdm_status(mdm_socket_t socket, mdm_cb_t status_cb);
 void mdm_loc_config(mdm_loc_config_t * config, mdm_cb_t loc_config_cb);
