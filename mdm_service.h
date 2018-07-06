@@ -14,6 +14,7 @@
 #define MDM_SOCKET_MODE_TCP 0
 
 #define OSX 1
+#define AUTO_RECCONECT 1
 
 #ifdef OSX
 
