@@ -182,6 +182,12 @@ uint8_t mdm_tick() {
     if(strstr(data_read_buff, "SRING: 1")) {
         SRING_STATUS = 1;
     }
+#ifdef AUTO_RECCONECT
+    if(strstr(data_read_buff, "NO CARRIER")) {
+        at_sd();
+        // printf("RECONNECTED\r\n");
+    }
+#endif
 
 
     // Main state loop, handle any active command set if there is one, calls the approriate call back on ERROR or FINISHED
